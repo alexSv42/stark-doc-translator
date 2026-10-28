@@ -1,0 +1,7 @@
+{
+  "btScore": 1,
+  "language": "en→es",
+  "paragraphs": 5,
+  "provider": "MockProvider",
+  "note": "MockProvider prepends [lang] prefix, so overlap is high. Real OpenAI would produce a real BT-Score."
+}

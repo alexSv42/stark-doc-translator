@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.DS_Store
+*.local
+backend/dist
+backend/node_modules
+data/
+.cursor/mcp.json
+.idea/

@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: stark_translator
+      POSTGRES_USER: stark
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stark_dev_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stark -d stark_translator"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://stark:${POSTGRES_PASSWORD:-stark_dev_password}@postgres:5432/stark_translator
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      FILE_STORAGE_PATH: /app/data/files
+    volumes:
+      - filedata:/app/data/files
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["node", "dist/worker.js"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://stark:${POSTGRES_PASSWORD:-stark_dev_password}@postgres:5432/stark_translator
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      FILE_STORAGE_PATH: /app/data/files
+    volumes:
+      - filedata:/app/data/files
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["node", "dist/mcp-server.js"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      MCP_MODE: "1"
+      DATABASE_URL: postgresql://stark:${POSTGRES_PASSWORD:-stark_dev_password}@postgres:5432/stark_translator
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      FILE_STORAGE_PATH: /app/data/files
+    volumes:
+      - filedata:/app/data/files
+    stdin_open: true
+    profiles: ["mcp"]
+
+volumes:
+  pgdata:
+  redisdata:
+  filedata:
